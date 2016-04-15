@@ -63,6 +63,8 @@ BEGIN_MESSAGE_MAP(CTcpServerDlg, CDialogEx)
 	ON_WM_SYSCOMMAND()
 	ON_WM_PAINT()
 	ON_WM_QUERYDRAGICON()
+	ON_BN_CLICKED(IDC_BTN_BIND, &CTcpServerDlg::OnBnClickedBtnBind)
+	ON_BN_CLICKED(IDC_BTN_SEND, &CTcpServerDlg::OnBnClickedBtnSend)
 END_MESSAGE_MAP()
 
 
@@ -151,3 +153,15 @@ HCURSOR CTcpServerDlg::OnQueryDragIcon()
 	return static_cast<HCURSOR>(m_hIcon);
 }
 
+
+
+void CTcpServerDlg::OnBnClickedBtnBind()
+{
+	// TODO: Add your control notification handler code here
+}
+
+
+void CTcpServerDlg::OnBnClickedBtnSend()
+{
+	// TODO: Add your control notification handler code here
+}
