@@ -5,6 +5,8 @@
 
 #pragma once
 
+#define FD_SETSIZE	0xffff
+
 #ifndef _SECURE_ATL
 #define _SECURE_ATL 1
 #endif

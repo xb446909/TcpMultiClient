@@ -6,11 +6,18 @@
 #include "TcpServer.h"
 #include "TcpServerDlg.h"
 #include "afxdialogex.h"
+#include <vector>
+
+using namespace std;
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
 
+#define UM_SOCK_ASYNCRECVMSG	(WM_USER + 1)
+#define UM_SOCK_ACCEPT			(WM_USER + 2)
+
+vector<SOCKET> socketList;
 
 // CAboutDlg dialog used for App About
 
@@ -45,7 +52,7 @@ END_MESSAGE_MAP()
 
 // CTcpServerDlg dialog
 
-
+DWORD WINAPI TcpListenThread( LPVOID lpParam );
 
 
 CTcpServerDlg::CTcpServerDlg(CWnd* pParent /*=NULL*/)
@@ -65,6 +72,8 @@ BEGIN_MESSAGE_MAP(CTcpServerDlg, CDialogEx)
 	ON_WM_QUERYDRAGICON()
 	ON_BN_CLICKED(IDC_BTN_BIND, &CTcpServerDlg::OnBnClickedBtnBind)
 	ON_BN_CLICKED(IDC_BTN_SEND, &CTcpServerDlg::OnBnClickedBtnSend)
+	ON_MESSAGE(UM_SOCK_ASYNCRECVMSG, &CTcpServerDlg::OnSocketRecvMsg)
+	ON_MESSAGE(UM_SOCK_ACCEPT, &CTcpServerDlg::OnSocketAccpet)
 END_MESSAGE_MAP()
 
 
@@ -158,8 +167,98 @@ HCURSOR CTcpServerDlg::OnQueryDragIcon()
 void CTcpServerDlg::OnBnClickedBtnBind()
 {
 	// TODO: Add your control notification handler code here
+	hThreadListen = CreateThread(NULL, 0, TcpListenThread, m_hWnd, 0, &dwThreadListenID);
 }
 
+DWORD WINAPI TcpListenThread( LPVOID lpParam )
+{
+	HWND hWnd = (HWND)lpParam;
+
+	WSADATA wsaData;
+	int iResult = 0;
+
+	iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
+	if (iResult != NO_ERROR) {
+		wprintf(L"WSAStartup() failed with error: %d\n", iResult);
+		return 1;
+	}
+
+	SOCKET listenSock = socket( AF_INET, SOCK_STREAM, IPPROTO_TCP );
+	UINT port = GetDlgItemInt(hWnd, IDC_EDIT_PORT, NULL, FALSE);
+	sockaddr_in sin;
+	sin.sin_family = AF_INET;
+	sin.sin_port = htons(port);
+	sin.sin_addr.S_un.S_addr = INADDR_ANY;
+	int nRet = bind( listenSock, (sockaddr*)&sin, (int)(sizeof(sin)));
+	if ( nRet == SOCKET_ERROR )
+	{
+		DWORD errCode = GetLastError();
+		return 0;
+	}
+
+	listen( listenSock, SOMAXCONN);
+
+	sockaddr_in clientAddr;
+	int nameLen = sizeof( clientAddr );
+
+	char buffer[32] = {0};
+
+	while( socketList.size() < FD_SETSIZE )
+	{
+		SOCKET clientSock = accept( listenSock, (sockaddr*)&clientAddr, &nameLen );
+		socketList.push_back(clientSock);
+		sprintf_s(buffer, "%s:%d", inet_ntoa(clientAddr.sin_addr), clientAddr.sin_port);
+		::SendMessage(hWnd, UM_SOCK_ACCEPT, 0, (LPARAM)buffer);
+		WSAAsyncSelect( clientSock, hWnd, UM_SOCK_ASYNCRECVMSG, FD_READ | FD_CLOSE );
+	}
+	return 0;
+}
+
+LRESULT CTcpServerDlg::OnSocketRecvMsg(WPARAM wParam, LPARAM lParam)
+{
+	SOCKET clientSock = (SOCKET)wParam;
+	if ( WSAGETSELECTERROR( lParam ) )
+	{
+		closesocket( clientSock );
+		return 0;
+	}
+
+	switch ( WSAGETSELECTEVENT( lParam ) )
+	{
+	case FD_READ:
+		{
+			char recvBuffer[10240] = {'\0'};
+			int nRet = recv( clientSock, recvBuffer, 10240, 0 );
+			if ( nRet > 0 )
+			{
+				//szRecvMsg.AppendFormat(_T("Client %d Say:%s\r\n"), clientSock, recvBuffer );
+			}
+			else
+			{
+				//client disconnect
+				//szRecvMsg.AppendFormat(_T("Client %d Disconnect!\r\n"), clientSock );
+			}
+		}                              
+
+		break;
+
+	case FD_CLOSE:
+		{
+			closesocket( clientSock );
+			//szRecvMsg.AppendFormat(_T("Client %d Disconnect!\r\n"), clientSock );
+		}
+
+		break;
+	}
+	return 0;
+}
+
+LRESULT CTcpServerDlg::OnSocketAccpet(WPARAM wParam, LPARAM lParam)
+{
+	char* buffer = (char*)lParam;
+	((CListBox*)GetDlgItem(IDC_LIST_CLIENT))->AddString(CA2W(buffer));
+	return 0;
+}
 
 void CTcpServerDlg::OnBnClickedBtnSend()
 {
