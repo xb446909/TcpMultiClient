@@ -38,6 +38,7 @@ public:
 	afx_msg void OnBnClickedBtnBind();
 	afx_msg void OnBnClickedBtnSend();
 	afx_msg LRESULT OnSocketRecvMsg(WPARAM wParam, LPARAM lParam);
+	afx_msg LRESULT OnUpdateClientList(WPARAM wParam, LPARAM lParam);
 
 	HANDLE hThreadListen;
 	DWORD dwThreadListenID;

@@ -15,10 +15,11 @@ using namespace std;
 #endif
 
 #define UM_SOCK_ASYNCRECVMSG	(WM_USER + 1)
-#define UM_SOCK_ACCEPT			(WM_USER + 2)
+#define UM_UPDATE_CLIENTLIST	(WM_USER + 2)
 
 void EditBoxAppendText(HWND hEditBox, LPCTSTR text);
 int MultibyteToUnicode(LPCSTR strIn, LPWSTR strOut, int nLenOut);
+int FindIndexFromSocket(vector<SocketInfo> vec, SOCKET socket);
 
 vector<SocketInfo> socketList;
 
@@ -76,6 +77,7 @@ BEGIN_MESSAGE_MAP(CTcpServerDlg, CDialogEx)
 	ON_BN_CLICKED(IDC_BTN_BIND, &CTcpServerDlg::OnBnClickedBtnBind)
 	ON_BN_CLICKED(IDC_BTN_SEND, &CTcpServerDlg::OnBnClickedBtnSend)
 	ON_MESSAGE(UM_SOCK_ASYNCRECVMSG, &CTcpServerDlg::OnSocketRecvMsg)
+	ON_MESSAGE(UM_UPDATE_CLIENTLIST, &CTcpServerDlg::OnUpdateClientList)
 END_MESSAGE_MAP()
 
 
@@ -203,12 +205,15 @@ DWORD WINAPI TcpListenThread( LPVOID lpParam )
 		return 0;
 	}
 
+	HWND hEditRecv = GetDlgItem(hWnd, IDC_EDIT_RECV);
+	str.Format(L"Bind port %d successfully!\r\n", port);
+	EditBoxAppendText(hEditRecv, str);
+
 	listen( listenSock, SOMAXCONN);
 
 	sockaddr_in clientAddr;
 	int nameLen = sizeof( clientAddr );
 
-	char buffer[32] = {0};
 	wchar_t wBuffer[32] = { 0 };
 
 	while( socketList.size() < FD_SETSIZE )
@@ -218,11 +223,20 @@ DWORD WINAPI TcpListenThread( LPVOID lpParam )
 		info.socket = clientSock;
 		info.clientAddr = clientAddr;
 		socketList.push_back(info);
-		sprintf_s(buffer, "%s:%d", inet_ntoa(clientAddr.sin_addr), clientAddr.sin_port);
-		MultibyteToUnicode(buffer, wBuffer, 32);
-		HWND hListBox = GetDlgItem(hWnd, IDC_LIST_CLIENT);
-		::SendMessage(hListBox, LB_ADDSTRING, 0, (LPARAM)wBuffer);
+		SendMessage(hWnd, UM_UPDATE_CLIENTLIST, 0, 0);
 		WSAAsyncSelect( clientSock, hWnd, UM_SOCK_ASYNCRECVMSG, FD_READ | FD_CLOSE );
+	}
+	return 0;
+}
+
+LRESULT CTcpServerDlg::OnUpdateClientList(WPARAM wParam, LPARAM lParam)
+{
+	char buffer[32] = { 0 };
+	((CListBox*)GetDlgItem(IDC_LIST_CLIENT))->ResetContent();
+	for (size_t i = 0; i < socketList.size(); i++)
+	{
+		sprintf_s(buffer, "%s:%d", inet_ntoa(socketList[i].clientAddr.sin_addr), socketList[i].clientAddr.sin_port);
+		((CListBox*)GetDlgItem(IDC_LIST_CLIENT))->AddString(CA2W(buffer));
 	}
 	return 0;
 }
@@ -238,6 +252,7 @@ LRESULT CTcpServerDlg::OnSocketRecvMsg(WPARAM wParam, LPARAM lParam)
 
 	HWND hEditRecv = ::GetDlgItem(m_hWnd, IDC_EDIT_RECV);
 	char buffer[10500] = { 0 };
+	int idx = FindIndexFromSocket(socketList, clientSock);
 
 	switch ( WSAGETSELECTEVENT( lParam ) )
 	{
@@ -247,14 +262,18 @@ LRESULT CTcpServerDlg::OnSocketRecvMsg(WPARAM wParam, LPARAM lParam)
 			int nRet = recv( clientSock, recvBuffer, 10240, 0 );
 			if ( nRet > 0 )
 			{
-				//sprintf_s(buffer, "From %s:%d :%s\r\n", inet_ntoa())
-				EditBoxAppendText(hEditRecv, CA2W(recvBuffer) + L"\r\n");
-				//szRecvMsg.AppendFormat(_T("Client %d Say:%s\r\n"), clientSock, recvBuffer );
+				sprintf_s(buffer, "Cient %s:%d Say: %s\r\n", inet_ntoa(socketList[idx].clientAddr.sin_addr), 
+															socketList[idx].clientAddr.sin_port, recvBuffer);
+				EditBoxAppendText(hEditRecv, CA2W(buffer));
 			}
 			else
 			{
-				//client disconnect
-				//szRecvMsg.AppendFormat(_T("Client %d Disconnect!\r\n"), clientSock );
+				sprintf_s(buffer, "Cient %s:%d Disconnect!\r\n", inet_ntoa(socketList[idx].clientAddr.sin_addr),
+					socketList[idx].clientAddr.sin_port);
+				EditBoxAppendText(hEditRecv, CA2W(buffer));
+				closesocket(clientSock);
+				socketList.erase(socketList.begin() + idx);
+				OnUpdateClientList(0, 0);
 			}
 		}                              
 
@@ -262,8 +281,12 @@ LRESULT CTcpServerDlg::OnSocketRecvMsg(WPARAM wParam, LPARAM lParam)
 
 	case FD_CLOSE:
 		{
+			sprintf_s(buffer, "Cient %s:%d Disconnect!\r\n", inet_ntoa(socketList[idx].clientAddr.sin_addr),
+				socketList[idx].clientAddr.sin_port);
+			EditBoxAppendText(hEditRecv, CA2W(buffer));
 			closesocket( clientSock );
-			//szRecvMsg.AppendFormat(_T("Client %d Disconnect!\r\n"), clientSock );
+			socketList.erase(socketList.begin() + idx);
+			OnUpdateClientList(0, 0);
 		}
 
 		break;
@@ -302,4 +325,16 @@ int MultibyteToUnicode(LPCSTR strIn, LPWSTR strOut, int nLenOut)
 	}
 
 	return nLen;
+}
+
+int FindIndexFromSocket(vector<SocketInfo> vec, SOCKET socket)
+{
+	for (size_t i = 0; i < vec.size(); i++)
+	{
+		if (socket == vec[i].socket)
+		{
+			return i;
+		}
+	}
+	return -1;
 }
