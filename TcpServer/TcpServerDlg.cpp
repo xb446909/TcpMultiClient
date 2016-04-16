@@ -17,7 +17,10 @@ using namespace std;
 #define UM_SOCK_ASYNCRECVMSG	(WM_USER + 1)
 #define UM_SOCK_ACCEPT			(WM_USER + 2)
 
-vector<SOCKET> socketList;
+void EditBoxAppendText(HWND hEditBox, LPCTSTR text);
+int MultibyteToUnicode(LPCSTR strIn, LPWSTR strOut, int nLenOut);
+
+vector<SocketInfo> socketList;
 
 // CAboutDlg dialog used for App About
 
@@ -73,7 +76,6 @@ BEGIN_MESSAGE_MAP(CTcpServerDlg, CDialogEx)
 	ON_BN_CLICKED(IDC_BTN_BIND, &CTcpServerDlg::OnBnClickedBtnBind)
 	ON_BN_CLICKED(IDC_BTN_SEND, &CTcpServerDlg::OnBnClickedBtnSend)
 	ON_MESSAGE(UM_SOCK_ASYNCRECVMSG, &CTcpServerDlg::OnSocketRecvMsg)
-	ON_MESSAGE(UM_SOCK_ACCEPT, &CTcpServerDlg::OnSocketAccpet)
 END_MESSAGE_MAP()
 
 
@@ -176,10 +178,13 @@ DWORD WINAPI TcpListenThread( LPVOID lpParam )
 
 	WSADATA wsaData;
 	int iResult = 0;
+	CString str;
 
 	iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
-	if (iResult != NO_ERROR) {
-		wprintf(L"WSAStartup() failed with error: %d\n", iResult);
+	if (iResult != NO_ERROR) 
+	{
+		str.Format(L"WSAStartup() failed with error: %d\n", iResult);
+		AfxMessageBox(str);
 		return 1;
 	}
 
@@ -193,6 +198,8 @@ DWORD WINAPI TcpListenThread( LPVOID lpParam )
 	if ( nRet == SOCKET_ERROR )
 	{
 		DWORD errCode = GetLastError();
+		str.Format(L"Bind error, please try another port. Error Code: 0x%08x", errCode);
+		AfxMessageBox(str);
 		return 0;
 	}
 
@@ -202,13 +209,19 @@ DWORD WINAPI TcpListenThread( LPVOID lpParam )
 	int nameLen = sizeof( clientAddr );
 
 	char buffer[32] = {0};
+	wchar_t wBuffer[32] = { 0 };
 
 	while( socketList.size() < FD_SETSIZE )
 	{
 		SOCKET clientSock = accept( listenSock, (sockaddr*)&clientAddr, &nameLen );
-		socketList.push_back(clientSock);
+		SocketInfo info;
+		info.socket = clientSock;
+		info.clientAddr = clientAddr;
+		socketList.push_back(info);
 		sprintf_s(buffer, "%s:%d", inet_ntoa(clientAddr.sin_addr), clientAddr.sin_port);
-		::SendMessage(hWnd, UM_SOCK_ACCEPT, 0, (LPARAM)buffer);
+		MultibyteToUnicode(buffer, wBuffer, 32);
+		HWND hListBox = GetDlgItem(hWnd, IDC_LIST_CLIENT);
+		::SendMessage(hListBox, LB_ADDSTRING, 0, (LPARAM)wBuffer);
 		WSAAsyncSelect( clientSock, hWnd, UM_SOCK_ASYNCRECVMSG, FD_READ | FD_CLOSE );
 	}
 	return 0;
@@ -223,6 +236,9 @@ LRESULT CTcpServerDlg::OnSocketRecvMsg(WPARAM wParam, LPARAM lParam)
 		return 0;
 	}
 
+	HWND hEditRecv = ::GetDlgItem(m_hWnd, IDC_EDIT_RECV);
+	char buffer[10500] = { 0 };
+
 	switch ( WSAGETSELECTEVENT( lParam ) )
 	{
 	case FD_READ:
@@ -231,6 +247,8 @@ LRESULT CTcpServerDlg::OnSocketRecvMsg(WPARAM wParam, LPARAM lParam)
 			int nRet = recv( clientSock, recvBuffer, 10240, 0 );
 			if ( nRet > 0 )
 			{
+				//sprintf_s(buffer, "From %s:%d :%s\r\n", inet_ntoa())
+				EditBoxAppendText(hEditRecv, CA2W(recvBuffer) + L"\r\n");
 				//szRecvMsg.AppendFormat(_T("Client %d Say:%s\r\n"), clientSock, recvBuffer );
 			}
 			else
@@ -253,14 +271,35 @@ LRESULT CTcpServerDlg::OnSocketRecvMsg(WPARAM wParam, LPARAM lParam)
 	return 0;
 }
 
-LRESULT CTcpServerDlg::OnSocketAccpet(WPARAM wParam, LPARAM lParam)
+void EditBoxAppendText(HWND hEditBox, LPCTSTR text)
 {
-	char* buffer = (char*)lParam;
-	((CListBox*)GetDlgItem(IDC_LIST_CLIENT))->AddString(CA2W(buffer));
-	return 0;
+	int len = 0;
+	len = GetWindowTextLength(hEditBox);
+	SetFocus(hEditBox);
+	SendMessage(hEditBox, EM_SETSEL, len, len);
+	SendMessage(hEditBox, EM_REPLACESEL, 0, (LPARAM)text);
 }
 
 void CTcpServerDlg::OnBnClickedBtnSend()
 {
 	// TODO: Add your control notification handler code here
+}
+
+int MultibyteToUnicode(LPCSTR strIn, LPWSTR strOut, int nLenOut)
+{
+	if (strOut == NULL)
+	{
+		return 0;
+	}
+
+	int nLen = MultiByteToWideChar(CP_ACP, 0, strIn, -1, NULL, 0);
+	nLen = min(nLen, nLenOut);
+	MultiByteToWideChar(CP_ACP, 0, strIn, -1, strOut, nLen);
+
+	if (nLen < nLenOut)
+	{
+		strOut[nLen] = 0;
+	}
+
+	return nLen;
 }

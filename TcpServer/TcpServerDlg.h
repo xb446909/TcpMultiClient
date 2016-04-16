@@ -4,6 +4,11 @@
 
 #pragma once
 
+typedef struct _socketinfo
+{
+	SOCKET socket;
+	sockaddr_in clientAddr;
+}SocketInfo;
 
 // CTcpServerDlg dialog
 class CTcpServerDlg : public CDialogEx
@@ -33,7 +38,6 @@ public:
 	afx_msg void OnBnClickedBtnBind();
 	afx_msg void OnBnClickedBtnSend();
 	afx_msg LRESULT OnSocketRecvMsg(WPARAM wParam, LPARAM lParam);
-	afx_msg LRESULT OnSocketAccpet(WPARAM wParam, LPARAM lParam);
 
 	HANDLE hThreadListen;
 	DWORD dwThreadListenID;
