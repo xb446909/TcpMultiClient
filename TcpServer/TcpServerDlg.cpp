@@ -19,7 +19,8 @@ using namespace std;
 
 void EditBoxAppendText(HWND hEditBox, LPCTSTR text);
 int MultibyteToUnicode(LPCSTR strIn, LPWSTR strOut, int nLenOut);
-int FindIndexFromSocket(vector<SocketInfo> vec, SOCKET socket);
+int FindIndexFromSocket(vector<SocketInfo> vec, SOCKET socket); 
+int FindIndexFromAddress(vector<SocketInfo> vec, char* addr);
 
 vector<SocketInfo> socketList;
 
@@ -306,6 +307,27 @@ void EditBoxAppendText(HWND hEditBox, LPCTSTR text)
 void CTcpServerDlg::OnBnClickedBtnSend()
 {
 	// TODO: Add your control notification handler code here
+	int sel = ((CListBox*)GetDlgItem(IDC_LIST_CLIENT))->GetCurSel();
+	if (sel == LB_ERR)
+	{
+		MessageBox(L"Please select a client to send message.");
+		return;
+	}
+	CString str;
+	((CListBox*)GetDlgItem(IDC_LIST_CLIENT))->GetText(sel, str);
+	int idx = FindIndexFromAddress(socketList, CW2A(str));
+	if (idx != -1)
+	{
+		char sendBuffer[10240] = { 0 };
+		GetDlgItemTextA(m_hWnd, IDC_EDIT_SEND, sendBuffer, 10240);
+		send(socketList[idx].socket, sendBuffer, strlen(sendBuffer) + 1, 0);
+		SetDlgItemText(IDC_EDIT_SEND, L"");
+
+		char showBuffer[10500] = { 0 };
+		sprintf_s(showBuffer, "Say to %s: %s\r\n", (char*)CW2A(str), sendBuffer);
+		HWND hEditRecv = ::GetDlgItem(m_hWnd, IDC_EDIT_RECV);
+		EditBoxAppendText(hEditRecv, CA2W(showBuffer));
+	}
 }
 
 int MultibyteToUnicode(LPCSTR strIn, LPWSTR strOut, int nLenOut)
@@ -332,6 +354,21 @@ int FindIndexFromSocket(vector<SocketInfo> vec, SOCKET socket)
 	for (size_t i = 0; i < vec.size(); i++)
 	{
 		if (socket == vec[i].socket)
+		{
+			return i;
+		}
+	}
+	return -1;
+}
+
+int FindIndexFromAddress(vector<SocketInfo> vec, char* addr)
+{
+	char szBuffer[32] = { 0 };
+	for (size_t i = 0; i < vec.size(); i++)
+	{
+		sprintf_s(szBuffer, "%s:%d", inet_ntoa(socketList[i].clientAddr.sin_addr),
+			socketList[i].clientAddr.sin_port);
+		if (strcmp(szBuffer, addr) == 0)
 		{
 			return i;
 		}
