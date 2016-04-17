@@ -63,6 +63,7 @@ BEGIN_MESSAGE_MAP(CTcpClientDlg, CDialogEx)
 	ON_WM_SYSCOMMAND()
 	ON_WM_PAINT()
 	ON_WM_QUERYDRAGICON()
+	ON_NOTIFY(IPN_FIELDCHANGED, IDC_IPADDRESS1, &CTcpClientDlg::OnIpnFieldchangedIpaddress1)
 END_MESSAGE_MAP()
 
 
@@ -150,4 +151,6 @@ HCURSOR CTcpClientDlg::OnQueryDragIcon()
 {
 	return static_cast<HCURSOR>(m_hIcon);
 }
+
+
 
